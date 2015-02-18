@@ -1,0 +1,51 @@
+---
+# Based on https://www.digitalocean.com/community/tutorials/initial-server-setup-with-ubuntu-14-04
+- hosts: digitalocean
+  user: root
+
+  vars:
+    timezone: 'Asia/Singapore'
+    user: ensheng    # replace with your name
+    user_groups: sudo
+
+  vars_prompt:
+   - name: "user_password"    
+     prompt: "Enter a password for the user"    
+     private: yes    
+     encrypt: "md5_crypt" #need to have python-passlib installed in local machine before we can use it    
+     confirm: yes    
+     salt_size: 7
+
+  tasks:
+    - name: Set Timezone
+      copy: content={{timezone}}
+            dest=/etc/timezone
+            mode=0644
+            backup=yes
+      notify:
+        - update timezone
+
+    - name: Add User 
+      user: name={{user}} password={{user_password}} groups={{user_groups}} shell=/bin/bash append=yes
+
+    - name: create user's .ssh folder
+      file: path=/home/{{user}}/.ssh owner={{user}} group={{user}} mode=0700 state=directory
+
+    - name: copy root's ssh keys to user's
+      shell: cp /root/.ssh/authorized_keys /home/{{user}}/.ssh/authorized_keys && chmod 0600 /home/{{user}}/.ssh/authorized_keys && chown {{user}}:{{user}} /home/{{user}}/.ssh/authorized_keys
+
+    - name: SSH to have no root login
+      lineinfile:
+        dest=/etc/ssh/sshd_config
+        state=present
+        regexp='^#?PermitRootLogin'
+        line='PermitRootLogin no'
+      notify:
+        - restart sshd
+
+  handlers:
+    - name: update timezone
+      command: dpkg-reconfigure --frontend noninteractive tzdata
+
+    - name: restart sshd
+      service: name=ssh state=restarted
